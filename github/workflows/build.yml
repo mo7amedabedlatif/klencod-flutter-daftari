@@ -1,0 +1,52 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # المشروع المرفوع ما فيه مجلد android، فننشئه ونرجّع ملفاتنا فوقه
+      - name: Create Android scaffold
+        run: |
+          if [ ! -d android ]; then
+            mkdir -p /tmp/keep
+            cp -r lib /tmp/keep/lib
+            flutter create --org com.daftari --project-name daftari --platforms=android .
+            rm -rf lib && cp -r /tmp/keep/lib lib
+            rm -f test/widget_test.dart
+          fi
+
+      # صلاحيات قراءة الرسائل + السماح بفتح روابط الواتس
+      - name: Add SMS permissions
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          if ! grep -q RECEIVE_SMS "$M"; then
+            sed -i '0,/<application/s##<uses-permission android:name="android.permission.RECEIVE_SMS"/>\n    <uses-permission android:name="android.permission.READ_SMS"/>\n    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>\n    <queries><intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent></queries>\n    <application#' "$M"
+          fi
+          grep -n "SMS\|PHONE_STATE\|queries" "$M"
+
+      - run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daftari-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
